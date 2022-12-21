@@ -223,6 +223,77 @@ def run(routes, host = '0.0.0.0', port = 8080):
     server.start()
     server.waitForThread()
 
+    import matplotlib.pyplot as plt
+from perspective import Table
+import time
+
+# Initialize perspective table and callback function
+table = Table()
+
+def update_table(data):
+    table.update(data)
+
+# Set up matplotlib figure and axes
+fig, ax = plt.subplots()
+
+# Set up upper and lower bounds for ratio
+upper_bound = 1.1  # +10% of 12-month historical average ratio
+lower_bound = 0.9  # -10% of 12-month historical average ratio
+
+def send_requests():
+    while True:
+        # Send request to server
+        response = urllib.request.urlopen(QUERY.format(random.random())).read()
+        quotes = json.loads(response)
+        
+        # Process response and extract necessary data
+        for quote in quotes:
+            stock, timestamp, top_ask_price = getDataPoint(quote)
+            data = {'timestamp': timestamp, 'top_ask_price': top_ask_price, 'stock': stock}
+            update_table(data)
+        
+        # Sleep for a short time before sending the next request
+        time.sleep(1)  # Sleep for 1 second before sending the next request
+
+# Start thread to send requests
+thread = threading.Thread(target=send_requests)
+thread.start()
+
+# Set up callback function to update graph
+def update_graph(data):
+    # Get data from perspective table
+    df = table.view().to_df()
+    
+    # Calculate ratio of top ask prices for stocks A and B
+    if 'ABC' in df['stock'] and 'DEF' in df['stock']:
+        top_ask_price_a = df[df['stock'] == 'ABC']['top_ask_price'].iloc[-1]
+        top_ask_price_b = df[df['stock'] == 'DEF']['top_ask_price'].iloc[-1]
+        ratio = top_ask_price_a / top_ask_price_b
+        
+    # Update x and y data for the graph
+    x = df['timestamp'].tolist()
+    y = ratio
+    
+    # Clear previous data from the graph
+    ax.clear()
+    
+    # Plot new data on the graph
+    ax.plot(x, y)
+    
+    # Draw upper and lower bounds on the graph
+    ax.axhline(y=upper_bound, color='r', linestyle='--')
+    ax.axhline(y=lower_bound, color='r', linestyle='--')
+    
+    # Show alert if ratio crosses bounds
+    if ratio > upper_bound or ratio < lower_bound:
+        ax.text(0.5, 0.5, 'ALERT: Ratio outside bounds', color='r', fontsize=20, transform=ax.transAxes)
+    
+    # Update the graph
+        plt.draw()
+        table.on_change(update_graph)
+
+        plt.show()
+
 ################################################################################
 #
 # App
